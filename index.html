@@ -2747,7 +2747,7 @@ const ACT = {
   editPerson(pid) { const p = S.persons.find((x) => x.id === pid); modal(p.name, F.form(F.text('name', 'Name', p.name) + `<label class="field"><span>Colour</span><input type="color" name="color" value="${p.color}" /></label>` + `<h3>Pay</h3><div class="form-row">` + F.num('hourlyRate', 'Hourly rate ($)', p.hourlyRate) + F.num('hoursPerWeek', 'Hours per week', p.hoursPerWeek, '0.5') + F.num('overtimeRate', 'Overtime rate ($/h)', p.overtimeRate) + `</div><h3>Estimated taxes (effective %)</h3><div class="form-row">` + F.num('federal', 'Federal %', p.tax.federal, '0.1') + F.num('state', 'State %', p.tax.state, '0.1') + F.num('se', 'Self-employment %', p.tax.se, '0.1') + F.num('other', 'Other %', p.tax.other, '0.1') + `</div><p class="tiny muted">Set self-employment to 0 if you are a W-2 employee. Estimates, not tax advice.</p>`, 'Save')); onSubmit = () => { const f = formData(); Object.assign(p, { name: f.name || p.name, color: f.color, hourlyRate: numv(f.hourlyRate), hoursPerWeek: numv(f.hoursPerWeek), overtimeRate: numv(f.overtimeRate) }); Object.assign(p.tax, { federal: numv(f.federal), state: numv(f.state), se: numv(f.se), other: numv(f.other) }); closeModal(); }; },
   editHousehold() { modal('Household', F.form(F.text('name', 'Household name', S.household.name) + F.num('plannedSavings', 'Planned savings / month ($)', S.household.plannedSavings, '10') + F.num('plannedInvest', 'Planned investing / month ($)', S.household.plannedInvest, '10'), 'Save')); onSubmit = () => { const f = formData(); S.household.name = f.name || S.household.name; S.household.plannedSavings = numv(f.plannedSavings); S.household.plannedInvest = numv(f.plannedInvest); closeModal(); }; },
   splitRule() { const r = S.household.defaultRule; modal('How shared expenses are split', F.form(F.sel('method', 'Method', [['fifty_fifty', '50 / 50'], ['proportional', 'Proportional to income'], ['custom_percent', 'Custom percentages'], ['sole', 'One person pays 100%']], r.method) + `<div class="form-row">${S.persons.map((p) => F.num('pct_' + p.id, `${p.name} % (custom only)`, r.method === 'custom_percent' ? r.percents?.[p.id] ?? '' : '', '1')).join('')}</div>` + F.sel('sole', 'Who pays (100% only)', S.persons.map((p) => [p.id, p.name]), r.personId) + `<p class="tiny muted">Applies to every shared expense. Joint accounts are treated as funded the same way.</p>`, 'Save')); onSubmit = () => { const f = formData(); let rule = { method: f.method }; if (f.method === 'custom_percent') rule.percents = Object.fromEntries(S.persons.map((p) => [p.id, numv(f['pct_' + p.id])])); if (f.method === 'sole') rule.personId = f.sole; S.household.defaultRule = rule; S.household.jointFundingRule = rule; closeModal(); }; },
-  importCsv() { modal('Import a bank statement (CSV)', `<p class="small">Chase, Revolut and most banks export CSV. Chase: chase.com → account → <i>Download account activity</i>. Revolut: account → Statement → CSV.</p>` + F.form(`<label class="field"><span>CSV file</span><input type="file" name="file" accept=".csv,text/csv,text/plain" /></label>` + F.sel('accountId', 'Into which account?', [['new', '＋ Create a new account from this file'], ...S.accounts.map((a) => [a.id, a.name])], S.accounts[0]?.id ?? 'new') + F.text('newName', 'New account name (if creating)', 'Chase Checking') + F.sel('newType', 'New account type', [['checking', 'Checking'], ['savings', 'Savings'], ['credit_card', 'Credit card']], 'checking') + F.who('owner', S.persons[0]?.id) + F.check('negOut', 'In this file, negative numbers are money OUT (Chase, Revolut: yes)', true), 'Import')); onSubmit = async () => { const f = formData(); const file = document.querySelector('#mf [name=file]').files[0]; if (!file) return; const text = await file.text(); let accId = f.accountId; if (accId === 'new') { accId = uid(); S.accounts.push({ id: accId, provider: 'csv', institutionName: /revolut/i.test(text.slice(0, 500)) ? 'Revolut' : 'Chase', name: f.newName || 'Imported account', type: f.newType, mask: null, currency: 'USD', currentBalance: 0, availableBalance: 0, creditLimit: null, ownerPersonId: f.owner || null, includeInNetWorth: true, isDemo: false }); } const res = importCsv(text, accId, f.negOut); closeModal(); toast(`${res.added} added, ${res.skipped} duplicates skipped${res.balance !== null ? `, balance ${money(res.balance)}` : ''}`); }; },
+  importCsv() { modal('Import a bank statement', `<p class="small"><b>Chase:</b> in the Chase app open the account → <i>Statements &amp; documents</i> → download the monthly statement <b>PDF</b>, then choose it here. <b>Revolut</b> and other banks: export a <b>CSV</b> (Revolut: account → Statement → CSV).</p>` + F.form(`<label class="field"><span>Statement file (PDF or CSV)</span><input type="file" name="file" accept=".pdf,application/pdf,.csv,text/csv,text/plain" /></label>` + F.sel('accountId', 'Into which account?', [['new', '＋ Create a new account from this file'], ...S.accounts.map((a) => [a.id, a.name])], S.accounts[0]?.id ?? 'new') + F.text('newName', 'New account name (if creating)', 'Chase Checking') + F.sel('newType', 'New account type', [['checking', 'Checking'], ['savings', 'Savings'], ['credit_card', 'Credit card']], 'checking') + F.who('owner', S.persons[0]?.id) + F.check('negOut', 'CSV only: negative numbers are money OUT (Chase, Revolut: yes)', true), 'Import')); onSubmit = async () => { const f = formData(); const file = document.querySelector('#mf [name=file]').files[0]; if (!file) return; const isPdfFile = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'; const text = isPdfFile ? '' : await file.text(); let accId = f.accountId; if (accId === 'new') { accId = uid(); S.accounts.push({ id: accId, provider: 'csv', institutionName: /revolut/i.test(text.slice(0, 500)) ? 'Revolut' : 'Chase', name: f.newName || 'Imported account', type: f.newType, mask: null, currency: 'USD', currentBalance: 0, availableBalance: 0, creditLimit: null, ownerPersonId: f.owner || null, includeInNetWorth: true, isDemo: false }); } const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'; const res = isPdf ? await importPdf(file, accId) : importCsv(text, accId, f.negOut); closeModal(); toast(`${res.added} added, ${res.skipped} duplicates skipped${res.balance !== null ? `, balance ${money(res.balance)}` : ''}`); }; },
 };
 function refreshInvestmentBalances() { for (const a of S.accounts.filter((x) => ['investment', 'retirement'].includes(x.type))) { const hs = S.holdings.filter((h) => h.accountId === a.id); if (hs.length) { a.currentBalance = round2(hs.reduce((s, h) => s + h.quantity * h.currentPrice, 0)); a.availableBalance = a.currentBalance; } } }
 function dl(blob, filename) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
@@ -2765,6 +2765,67 @@ function importCsv(text, accountId, negOut) {
   return { added, skipped, balance };
 }
 function chaseCategoryHint(c) { const m = { 'food & drink': 'restaurants', groceries: 'groceries', gas: 'fuel', shopping: 'shopping', travel: 'travel', entertainment: 'entertainment', 'bills & utilities': 'utilities', 'health & wellness': 'personal_care', 'personal': 'personal', automotive: 'transportation', education: 'personal', 'gifts & donations': 'personal', home: 'housing', 'professional services': 'personal' }; return m[String(c || '').toLowerCase()]; }
+
+
+// ---------------------------------------------------------------- PDF statement import (Chase checking & credit card)
+let pdfLibPromise = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (!pdfLibPromise) pdfLibPromise = new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; resolve(window.pdfjsLib); }; s.onerror = () => reject(new Error('Could not load the PDF reader (needs internet the first time)')); document.head.appendChild(s); });
+  return pdfLibPromise;
+}
+/** Read a PDF into text lines, reconstructing rows from glyph positions (statements are tables). */
+async function pdfToLines(buffer) {
+  const pdfjs = await loadPdfJs(); const doc = await pdfjs.getDocument({ data: buffer }).promise; const lines = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p); const tc = await page.getTextContent(); const rows = new Map();
+    for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3) * 3; if (!rows.has(y)) rows.set(y, []); rows.get(y).push({ x: it.transform[4], s: it.str }); }
+    for (const y of [...rows.keys()].sort((a, b) => b - a)) lines.push(rows.get(y).sort((a, b) => a.x - b.x).map((r) => r.s).join(' ').replace(/\s+/g, ' ').trim());
+  }
+  return lines;
+}
+const AMT = String.raw`-?\$?\s?-?[\d,]{1,12}\.\d{2}`;
+const num = (t) => { const neg = /-/.test(t); return (neg ? -1 : 1) * Number(t.replace(/[^\d.]/g, '')); };
+/** Turn statement text lines into transactions. Works for Chase checking/savings and Chase credit cards; other banks often match too. */
+function parseStatementLines(lines) {
+  const text = lines.join('\n');
+  const isCard = /minimum payment due|payment due date|account activity|purchases?\b.*\$|new balance/i.test(text) && !/transaction detail/i.test(text);
+  // statement period → which year the MM/DD rows belong to
+  let closing = null; let m;
+  if ((m = text.match(/through\s+([A-Z][a-z]+ \d{1,2}, \d{4})/i)) || (m = text.match(/Statement Date:?\s*(\d{2}\/\d{2}\/\d{2,4})/i)) || (m = text.match(/Opening\/Closing Date\s+\d{2}\/\d{2}\/\d{2,4}\s*-\s*(\d{2}\/\d{2}\/\d{2,4})/i))) closing = toIso(m[1]);
+  if (!closing) { const yrs = text.match(/\b(20\d{2})\b/g); closing = yrs ? `${yrs[yrs.length - 1]}-12-31` : today(); }
+  const cy = Number(closing.slice(0, 4)), cm = Number(closing.slice(5, 7));
+  const yearFor = (mm) => (mm > cm ? cy - 1 : cy);
+  const row = new RegExp(String.raw`^(\d{2})\/(\d{2})(?:\/\d{2,4})?\s+(.*?)\s+(${AMT})(?:\s+(${AMT}))?\s*$`);
+  const out = []; let balance = null; let inSection = isCard ? false : true;
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (/transaction detail|account activity|payments and other credits|purchase/i.test(line)) inSection = true;
+    if (/^(total|daily ending balance|interest charges|fees charged|year-to-date|beginning balance|ending balance|checks paid|atm & debit card|electronic withdrawals|deposits and additions)/i.test(line)) { if (/^(daily ending balance|interest charges|fees charged|year-to-date)/i.test(line)) inSection = false; continue; }
+    const r = line.match(row); if (!r) continue;
+    const desc = r[3].replace(/\s{2,}/g, ' ').trim(); if (!desc || /^(beginning|ending) balance/i.test(desc)) continue;
+    if (/^\d{2}\/\d{2}/.test(desc) && !isCard) continue; // header-ish repeats
+    let amt = num(r[4]);
+    // checking: negative = out → flip. card: positive purchase = out → keep; payments/credits negative = in.
+    const amount = round2(isCard ? amt : -amt);
+    if (!amount) continue;
+    const date = `${yearFor(Number(r[1]))}-${r[1]}-${r[2]}`;
+    out.push({ date, desc, amount });
+    if (!isCard && r[5]) balance = num(r[5]);
+  }
+  if (isCard) { const nb = text.match(/New Balance:?\s*(-?\$?[\d,]+\.\d{2})/i); if (nb) balance = Math.abs(num(nb[1])); }
+  return { isCard, closing, rows: out, balance };
+}
+async function importPdf(file, accountId) {
+  const buffer = await file.arrayBuffer(); const lines = await pdfToLines(buffer); const parsed = parseStatementLines(lines);
+  if (!parsed.rows.length) throw new Error('No transactions found in this PDF. Chase checking and credit-card statements are supported; for other banks use a CSV export.');
+  const acc = S.accounts.find((a) => a.id === accountId); const existing = new Set(S.transactions.filter((t) => t.accountId === accountId).map((t) => t.key || `${t.postedAt}|${t.merchantName}|${t.amount}`));
+  let added = 0, skipped = 0;
+  for (const r of parsed.rows) { const key = `${r.date}|${r.desc}|${r.amount}`; if (existing.has(key)) { skipped++; continue; } existing.add(key); S.transactions.push(newTx(accountId, r.date, r.desc.slice(0, 80), r.desc, r.amount, { source: 'provider', key })); added++; }
+  S.transactions.sort((a, b) => b.postedAt.localeCompare(a.postedAt));
+  if (acc && parsed.balance !== null) { acc.currentBalance = parsed.balance; acc.availableBalance = parsed.balance; if (parsed.isCard && acc.type === 'checking' && acc.provider === 'csv') acc.type = 'credit_card'; }
+  return { added, skipped, balance: parsed.balance, isCard: parsed.isCard, period: parsed.closing };
+}
 
 // ---------------------------------------------------------------- setup wizard
 function setupView() {
